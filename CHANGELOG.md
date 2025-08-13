@@ -1,6 +1,18 @@
 # Changelog
 
-## [[v1.2.0]](https://github.com/Payfast/mod-opencart/releases/tag/v1.2.0)
+## [[v1.3.0]](https://github.com/Payfast/opencart-aggregation/releases/tag/v1.3.0)
+
+### Added
+
+- Code quality improvements for better maintainability.
+- Updated for OpenCart v4.1.0.3 and PHP 8.2.
+- Payfast Aggregation Branding.
+
+### Changed
+
+- Upgraded the Payfast common library to version 1.4.0.
+
+## [[v1.2.0]](https://github.com/Payfast/opencart-aggregation/releases/tag/v1.2.0)
 
 ### Changed
 
@@ -11,7 +23,7 @@
 
 - Corrected currency amount formatting passed to the gateway, ensuring accurate transaction processing.
 
-## [[v1.1.0]](https://github.com/Payfast/mod-opencart/releases/tag/v1.1.0)
+## [[v1.1.0]](https://github.com/Payfast/opencart-aggregation/releases/tag/v1.1.0)
 
 ### Added
 
@@ -22,13 +34,13 @@
 - Updated for OpenCart v4.0.2.3.
 - Code quality improvements.
 
-## [[v1.0.1]](https://github.com/Payfast/mod-opencart/releases/tag/v1.0.1)
+## [[v1.0.1]](https://github.com/Payfast/opencart-aggregation/releases/tag/v1.0.1)
 
 ### Changed
 
 - Updated for OpenCart v4.0.2.2.
 
-## [[v1.0.0]](https://github.com/Payfast/mod-opencart/releases/tag/v1.0.0)
+## [[v1.0.0]](https://github.com/Payfast/opencart-aggregation/releases/tag/v1.0.0)
 
 ### Added
 
