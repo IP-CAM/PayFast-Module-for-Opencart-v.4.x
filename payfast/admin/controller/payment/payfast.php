@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Copyright (c) 2024 Payfast (Pty) Ltd
+ * Copyright (c) 2025 Payfast (Pty) Ltd
  * You (being anyone who is not Payfast (Pty) Ltd) may download and use this plugin / code in your own website in
  * conjunction with a registered and active Payfast account. If your Payfast account is terminated for any reason,
  * you may not use this plugin / code or part thereof. Except as expressly indicated in this licence, you may not use,
@@ -31,7 +31,7 @@ use Opencart\System\Engine\Controller;
  */
 class Payfast extends Controller
 {
-    private array $error = [];
+    private array  $error     = [];
     private string $tableName = DB_PREFIX . 'payfast_transaction';
     public const LANGUAGE_LITERAL    = 'extension/payfast/payment/payfast';
     public const MARKETPLACE_LITERAL = 'marketplace/extension';

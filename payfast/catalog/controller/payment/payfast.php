@@ -24,10 +24,13 @@ class Payfast extends Controller
 {
     public string $pfHost = '';
     public const CHECKOUT_ORDER_LITERAL = 'checkout/order';
-    public string $softwareName = '';
-    public string $softwareVer = '';
-    public string $moduleVer = '';
+    public string $softwareName       = '';
+    public string $softwareVer        = '';
+    public string $moduleVer          = '';
     public string $softwareModuleName = '';
+    private const STATUS_COMPLETED = 'COMPLETE';
+    private const STATUS_CANCELLED = 'CANCELLED';
+    private const STATUS_FAILED    = 'FAILED';
 
     /**
      * @param $registry
@@ -40,7 +43,7 @@ class Payfast extends Controller
             ) ? 'sandbox' : 'www') . '.payfast.co.za';
         $this->softwareName       = 'OpenCart';
         $this->softwareVer        = '4.0.2.3';
-        $this->moduleVer          = '1.2.0';
+        $this->moduleVer          = '1.3.0';
         $this->softwareModuleName = 'PF_OpenCart';
     }
 
@@ -116,7 +119,7 @@ class Payfast extends Controller
         define('PF_DEBUG', $debug);
         $pf_error   = false;
         $pf_err_msg = '';
-        $order_id   = $this->request->post['m_payment_id'] ?? 0;
+        $order_id   = filter_var($this->request->post['m_payment_id'] ?? 0, FILTER_VALIDATE_INT);
 
         $payfastRequest = new PayfastRequest($debug);
         $payfastRequest->pflog('Payfast ITN call received');
@@ -124,7 +127,6 @@ class Payfast extends Controller
         // Notify Payfast that information has been received
         header('HTTP/1.0 200 OK');
         flush();
-
 
         // Get data sent by Payfast
         $payfastRequest->pflog('Get posted data');
@@ -139,7 +141,7 @@ class Payfast extends Controller
             $pf_err_msg = $payfastRequest::PF_ERR_BAD_ACCESS;
         }
 
-        $pf_verify_data  = $this->verifySignature($pf_error, $pf_data);
+        $pf_verify_data  = $this->verifySignature($pf_error, $pf_data, $payfastRequest);
         $pf_error        = $pf_verify_data['pf_error'];
         $pf_param_string = $pf_verify_data['pf_param_string'];
 
@@ -174,7 +176,7 @@ class Payfast extends Controller
         if (!$pf_error) {
             $payfastRequest->pflog('Check data against internal order');
             if (empty($pf_data['token']) || strtotime($pf_data['custom_str2']) <=
-                                            strtotime(gmdate('Y-m-d') . '+ 2 days')) {
+                strtotime(gmdate('Y-m-d') . '+ 2 days')) {
                 $preAmount = $this->currency->format(
                     $order_info['total'],
                     $order_info['currency_code'],
@@ -185,7 +187,7 @@ class Payfast extends Controller
             }
 
             if (!empty($pf_data['token']) && strtotime($pf_data['custom_str2'])
-                                             > strtotime(gmdate('Y-m-d') . '+ 2 days')) {
+                > strtotime(gmdate('Y-m-d') . '+ 2 days')) {
                 $amount = filter_var(number_format($order_info['total'], 2), FILTER_SANITIZE_NUMBER_INT) / 100;
             }
 
@@ -196,7 +198,7 @@ class Payfast extends Controller
             }
         }
 
-        $this->updateOrder($pf_error, $pf_data, $order_id, $pf_err_msg);
+        $this->updateOrder($pf_error, $pf_data, $order_id, $pf_err_msg, $payfastRequest);
     }
 
 
@@ -221,14 +223,13 @@ class Payfast extends Controller
      *
      * @param $pf_error
      * @param $pf_data
+     * @param PayfastRequest $payfastRequest
      *
      * @return array
      */
-    public function verifySignature($pf_error, $pf_data): array
+    public function verifySignature($pf_error, $pf_data, PayfastRequest $payfastRequest): array
     {
         // Verify security signature
-        $debug          = $this->initializeDebug();
-        $payfastRequest = new PayfastRequest($debug);
         if (!$pf_error) {
             $payfastRequest->pflog('Verify security signature');
             $passphrase = empty($this->config->get('payment_payfast_passphrase')) ? null
@@ -260,51 +261,35 @@ class Payfast extends Controller
      * @param $pf_data
      * @param $order_id
      * @param $pf_err_msg
+     * @param PayfastRequest $payfastRequest
      *
      * @return bool|void
      */
-    public function updateOrder($pf_error, $pf_data, $order_id, $pf_err_msg)
+    public function updateOrder($pf_error, $pf_data, $order_id, $pf_err_msg, PayfastRequest $payfastRequest)
     {
         // Check status and update order
-        $debug          = $this->initializeDebug();
-        $payfastRequest = new PayfastRequest($debug);
-
         if (!$pf_error) {
             $payfastRequest->pflog('Check status and update order');
             if (empty($pf_data['token'])) {
-                switch ($pf_data['payment_status']) {
-                    case 'COMPLETE':
-                        $payfastRequest->pflog('- Complete');
-                        // Update the purchase status
-                        $order_status_id = $this->config->get('payment_payfast_completed_status_id');
+                $order_status_id = match ($pf_data['payment_status']) {
+                    self::STATUS_COMPLETED => $this->config->get('payment_payfast_completed_status_id'),
+                    self::STATUS_FAILED => $this->config->get('payment_payfast_failed_status_id'),
+                    default => null, // No status ID for unknown status & pending
+                };
 
+                $payfastRequest->pflog('- ' . ucfirst($pf_data['payment_status']));
 
-                        break;
-                    case 'FAILED':
-                        $payfastRequest->pflog('- Failed');
-                        // If payment fails, delete the purchase log
-                        $order_status_id = $this->config->get('payment_payfast_failed_status_id');
-
-
-                        break;
-                    case 'PENDING':
-                        $payfastRequest->pflog('- Pending');
-                        // Need to wait for "Completed" before processing
-
-                        break;
-                    default:
-                        // If unknown status, do nothing (safest course of action)
-
-
-                        break;
-                }
-
-                $this->model_checkout_order->addHistory($order_id, $order_status_id, '', true);
+                $this->model_checkout_order->addHistory(
+                    $order_id,
+                    $order_status_id,
+                    'Payfast Aggregation Payment ID: ' . $pf_data['pf_payment_id'] ?? '',
+                    true
+                );
 
                 return true;
             }
 
-            if ($pf_data['payment_status'] == 'COMPLETE') {
+            if ($pf_data['payment_status'] == self::STATUS_COMPLETED) {
                 $recurring = $this->getOrder($pf_data['m_payment_id']);
                 $this->db->query(
                     'INSERT INTO `' . DB_PREFIX . "order_recurring_transaction`
@@ -317,7 +302,12 @@ class Payfast extends Controller
                     $pf_data['custom_str4'] . "' AND `product_id` = '" . $pf_data['custom_str5'] . "'"
                 );
                 $order_status_id = $this->config->get('payment_payfast_completed_status_id');
-                $this->model_checkout_order->addHistory($order_id, $order_status_id, '', true);
+                $this->model_checkout_order->addHistory(
+                    $order_id,
+                    $order_status_id,
+                    'Payfast Aggregation Payment ID: ' . $pf_data['pf_payment_id'] ?? '',
+                    true
+                );
 
                 return true;
             }
@@ -328,7 +318,7 @@ class Payfast extends Controller
             return false;
         }
 
-        if ($pf_data['payment_status'] == 'CANCELLED') {
+        if ($pf_data['payment_status'] == self::STATUS_CANCELLED) {
             $recurring = $this->getOrder($pf_data['m_payment_id']);
 
             $this->db->query(
@@ -452,7 +442,7 @@ class Payfast extends Controller
         $item_name        = $this->config->get('config_name') . ' - #' . $this->session->data['order_id'];
         $item_description = $this->language->get('text_sale_description');
         $custom_str1      = $this->softwareName . '_' . $this->softwareVer .
-                            '_' . $this->moduleVer;
+            '_' . $this->moduleVer;
         $pay_array        = [
             'merchant_id'      => $merchant_id,
             'merchant_key'     => $merchant_key,
